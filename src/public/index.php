@@ -1,25 +1,30 @@
-<?php
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Horas Baratas - Electricidad</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Horas Baratas de Electricidad</h1>
+            <p class="subtitle">Ahorra en tu factura usando electricidad en los mejores momentos</p>
+        </header>
 
-require_once __DIR__ . '/../vendor/autoload.php';
+        <nav class="tabs">
+            <button class="tab active" data-view="today">Hoy</button>
+            <button class="tab" data-view="tomorrow">Mañana</button>
+            <button class="tab" data-view="tasks">Por Tarea</button>
+            <button class="tab" data-view="hours">24 Horas</button>
+        </nav>
 
-use Dotenv\Dotenv;
-use App\Config\Security;
-use App\Config\ErrorHandler;
+        <main id="content">
+            <div class="loading">Cargando...</div>
+        </main>
+    </div>
 
-// Load environment
-$dotenv = Dotenv::createImmutable(__DIR__ . '/..');
-$dotenv->load();
-
-// Set timezone
-date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'Europe/Madrid');
-
-// Initialize
-ErrorHandler::register();
-Security::setHeaders();
-
-// Router básico (temporal)
-echo json_encode([
-    'success' => true,
-    'message' => 'API initialized',
-    'version' => '1.0.0'
-]);
+    <script src="/js/app.js"></script>
+</body>
+</html>
