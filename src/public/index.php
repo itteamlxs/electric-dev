@@ -1,30 +1,47 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Horas Baratas - Electricidad</title>
-    <link rel="stylesheet" href="/css/style.css">
-</head>
-<body>
-    <div class="container">
-        <header>
-            <h1>Horas Baratas de Electricidad</h1>
-            <p class="subtitle">Ahorra en tu factura usando electricidad en los mejores momentos</p>
-        </header>
+<?php
 
-        <nav class="tabs">
-            <button class="tab active" data-view="today">Hoy</button>
-            <button class="tab" data-view="tomorrow">Mañana</button>
-            <button class="tab" data-view="tasks">Por Tarea</button>
-            <button class="tab" data-view="hours">24 Horas</button>
-        </nav>
+require_once __DIR__ . '/../vendor/autoload.php';
 
-        <main id="content">
-            <div class="loading">Cargando...</div>
-        </main>
-    </div>
+use Dotenv\Dotenv;
+use App\Config\Security;
+use App\Config\ErrorHandler;
+use App\Config\Router;
+use App\Config\RateLimiter;
+use App\Controllers\ApiController;
 
-    <script src="/js/app.js"></script>
-</body>
-</html>
+// Load environment
+$dotenv = Dotenv::createImmutable(__DIR__ . '/..');
+$dotenv->load();
+
+// Set timezone
+date_default_timezone_set($_ENV['APP_TIMEZONE'] ?? 'Europe/Madrid');
+
+// Initialize
+ErrorHandler::register();
+Security::setHeaders();
+RateLimiter::check();
+
+// Router
+$router = new Router();
+$api = new ApiController();
+
+// Routes
+$router->get('/api/today', [$api, 'getToday']);
+$router->get('/api/tomorrow', [$api, 'getTomorrow']);
+$router->get('/api/hours', [$api, 'getHours']);
+$router->get('/api/task/lavadora', fn() => $api->getTaskRecommendation('lavadora'));
+$router->get('/api/task/secadora', fn() => $api->getTaskRecommendation('secadora'));
+$router->get('/api/task/horno', fn() => $api->getTaskRecommendation('horno'));
+$router->get('/api/task/lavavajillas', fn() => $api->getTaskRecommendation('lavavajillas'));
+
+// Health check
+$router->get('/api/health', function() use ($router) {
+    $router->sendResponse([
+        'status' => 'ok',
+        'version' => '1.0.0',
+        'timestamp' => date('c')
+    ]);
+});
+
+// Dispatch
+$router->dispatch();
