@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Task;
 use App\Models\HourClassification;
 use App\Models\Recommendation;
+use App\Models\ElectricityPrice;
 use App\Config\Logger;
 
 class RecommendationGenerator
@@ -12,18 +13,40 @@ class RecommendationGenerator
     private Task $taskModel;
     private HourClassification $classificationModel;
     private Recommendation $recommendationModel;
+    private ElectricityPrice $priceModel;
     
     public function __construct()
     {
         $this->taskModel = new Task();
         $this->classificationModel = new HourClassification();
         $this->recommendationModel = new Recommendation();
+        $this->priceModel = new ElectricityPrice();
     }
     
     public function generateForDate(string $date): bool
     {
         Logger::info("Generating recommendations for date: $date");
         
+        $zones = $this->priceModel->getAvailableZones($date);
+        
+        if (empty($zones)) {
+            Logger::error("No zones found for date: $date");
+            return false;
+        }
+        
+        foreach ($zones as $zone) {
+            if (!$this->generateForZone($date, $zone['geo_id'])) {
+                Logger::error("Failed to generate recommendations for zone {$zone['geo_name']}");
+                return false;
+            }
+        }
+        
+        Logger::info("Successfully generated recommendations for all zones");
+        return true;
+    }
+    
+    private function generateForZone(string $date, int $geoId): bool
+    {
         $tasks = $this->taskModel->getAllActive();
         
         if (empty($tasks)) {
@@ -31,15 +54,13 @@ class RecommendationGenerator
             return false;
         }
         
-        // Obtener horas buenas
-        $goodHours = $this->classificationModel->getByDateAndClassification($date, 'buena');
+        $goodHours = $this->classificationModel->getByDateAndClassification($date, 'buena', $geoId);
         
         if (empty($goodHours)) {
-            Logger::warning("No good hours found for $date, using normal hours");
-            $goodHours = $this->classificationModel->getByDateAndClassification($date, 'normal');
+            Logger::warning("No good hours found for zone $geoId on $date, using normal hours");
+            $goodHours = $this->classificationModel->getByDateAndClassification($date, 'normal', $geoId);
         }
         
-        // Generar recomendaciones por tarea
         foreach ($tasks as $task) {
             $recommendedHours = $this->selectHoursForTask($task, $goodHours);
             
@@ -47,15 +68,15 @@ class RecommendationGenerator
                 $this->recommendationModel->insertOrUpdate(
                     $task['id'],
                     $date,
-                    $recommendedHours
+                    $recommendedHours,
+                    $geoId
                 );
             } catch (\Exception $e) {
-                Logger::error("Failed to save recommendation for task {$task['task_code']}: " . $e->getMessage());
+                Logger::error("Failed to save recommendation for task {$task['task_code']} zone $geoId: " . $e->getMessage());
                 return false;
             }
         }
         
-        Logger::info("Successfully generated recommendations for " . count($tasks) . " tasks");
         return true;
     }
     
@@ -64,14 +85,11 @@ class RecommendationGenerator
         $minDuration = $task['min_duration_hours'];
         $recommended = [];
         
-        // Buscar bloques consecutivos
         $blocks = $this->findConsecutiveBlocks($availableHours, $minDuration);
         
         if (!empty($blocks)) {
-            // Tomar el primer bloque disponible
             $recommended = $blocks[0];
         } elseif (!empty($availableHours)) {
-            // Si no hay bloques, tomar las primeras horas disponibles
             $recommended = array_slice($availableHours, 0, $minDuration);
         }
         

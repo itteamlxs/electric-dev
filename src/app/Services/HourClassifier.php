@@ -21,19 +21,36 @@ class HourClassifier
     {
         Logger::info("Starting classification for date: $date");
         
-        // Obtener precios del día
-        $prices = $this->priceModel->findByDate($date);
+        $zones = $this->priceModel->getAvailableZones($date);
         
-        if (count($prices) !== 24) {
-            Logger::error("Cannot classify: incomplete price data for $date");
+        if (empty($zones)) {
+            Logger::error("No zones found for date: $date");
             return false;
         }
         
-        // Calcular umbrales
-        $stats = $this->priceModel->getStatsByDate($date);
+        foreach ($zones as $zone) {
+            if (!$this->classifyZone($date, $zone['geo_id'])) {
+                Logger::error("Failed to classify zone {$zone['geo_name']}");
+                return false;
+            }
+        }
+        
+        Logger::info("Successfully classified all zones for date: $date");
+        return true;
+    }
+    
+    private function classifyZone(string $date, int $geoId): bool
+    {
+        $prices = $this->priceModel->findByDate($date, $geoId);
+        
+        if (count($prices) !== 24) {
+            Logger::error("Cannot classify zone $geoId: incomplete price data for $date");
+            return false;
+        }
+        
+        $stats = $this->priceModel->getStatsByDate($date, $geoId);
         $thresholds = $this->calculateThresholds($stats);
         
-        // Clasificar cada hora
         $classifications = [];
         foreach ($prices as $price) {
             $classification = $this->classifyHour($price['price_eur_mwh'], $thresholds);
@@ -41,17 +58,16 @@ class HourClassifier
             $classifications[] = [
                 'price_date' => $date,
                 'hour' => $price['hour'],
+                'geo_id' => $geoId,
                 'classification' => $classification
             ];
         }
         
-        // Guardar clasificaciones
         try {
             $this->classificationModel->insertBulk($classifications);
-            Logger::info("Successfully classified 24 hours for date: $date");
             return true;
         } catch (\Exception $e) {
-            Logger::error("Classification save failed: " . $e->getMessage());
+            Logger::error("Classification save failed for zone $geoId: " . $e->getMessage());
             return false;
         }
     }
@@ -62,8 +78,6 @@ class HourClassifier
         $max = $stats['max_price'];
         $range = $max - $min;
         
-        // Umbral bajo: 33% del rango desde el mínimo
-        // Umbral alto: 67% del rango desde el mínimo
         return [
             'low' => $min + ($range * 0.33),
             'high' => $min + ($range * 0.67)

@@ -39,8 +39,9 @@ class PriceImporter
             }
         }
         
-        if (count($prices) !== 24) {
-            Logger::warning("Incomplete data: expected 24 hours, got " . count($prices));
+        // Validar: debe ser múltiplo de 24 (una o más zonas completas)
+        if (empty($prices) || count($prices) % 24 !== 0) {
+            Logger::warning("Incomplete data: expected multiple of 24 hours, got " . count($prices));
             return false;
         }
         
@@ -68,6 +69,8 @@ class PriceImporter
             return [
                 'price_date' => $price['price_date'],
                 'hour' => (int) $price['hour'],
+                'geo_id' => (int) $price['geo_id'],
+                'geo_name' => $price['geo_name'],
                 'price_eur_mwh' => (float) $price['price_eur_mwh']
             ];
         }, $prices);

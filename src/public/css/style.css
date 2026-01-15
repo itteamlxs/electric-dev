@@ -35,6 +35,41 @@ header h1 {
 .subtitle {
     color: #7f8c8d;
     font-size: 1.1em;
+    margin-bottom: 20px;
+}
+
+.zone-selector {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+.zone-selector label {
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.zone-selector select {
+    padding: 8px 16px;
+    border: 2px solid #3498db;
+    border-radius: 6px;
+    font-size: 1em;
+    color: #2c3e50;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.zone-selector select:hover {
+    border-color: #2980b9;
+}
+
+.zone-selector select:focus {
+    outline: none;
+    border-color: #2980b9;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
 }
 
 .tabs {
@@ -79,6 +114,17 @@ header h1 {
     min-height: 400px;
 }
 
+#content h2 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+}
+
+#content h3 {
+    margin-top: 30px;
+    margin-bottom: 20px;
+    color: #2c3e50;
+}
+
 .loading {
     text-align: center;
     padding: 60px 20px;
@@ -92,6 +138,27 @@ header h1 {
     padding: 20px;
     border-radius: 6px;
     text-align: center;
+}
+
+.info-message {
+    background: #e8f4f8;
+    border-left: 4px solid #3498db;
+    padding: 30px;
+    border-radius: 6px;
+    text-align: center;
+}
+
+.info-message h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #2c3e50;
+    font-size: 1.5em;
+}
+
+.info-message p {
+    color: #555;
+    font-size: 1.1em;
+    line-height: 1.6;
 }
 
 .price-range {
@@ -134,6 +201,7 @@ header h1 {
 }
 
 .recommendation-card h3 {
+    margin-top: 0;
     margin-bottom: 15px;
     color: #2c3e50;
     font-size: 1.3em;
@@ -244,6 +312,7 @@ header h1 {
 }
 
 .task-detail h2 {
+    margin-top: 0;
     margin-bottom: 20px;
     color: #2c3e50;
 }
@@ -264,6 +333,14 @@ header h1 {
     
     header h1 {
         font-size: 1.5em;
+    }
+    
+    .zone-selector {
+        flex-direction: column;
+    }
+    
+    .zone-selector select {
+        width: 100%;
     }
     
     .tabs {

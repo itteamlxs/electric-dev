@@ -25,25 +25,44 @@ class ApiController extends BaseController
     public function getToday(): void
     {
         $date = date('Y-m-d');
-        $this->getSummary($date);
+        $geoId = (int) $this->getQueryParam('geo_id', 8741);
+        $this->getSummary($date, $geoId);
     }
     
     public function getTomorrow(): void
     {
         $date = date('Y-m-d', strtotime('+1 day'));
-        $this->getSummary($date);
+        $geoId = (int) $this->getQueryParam('geo_id', 8741);
+        $this->getSummary($date, $geoId);
+    }
+    
+    public function getZones(): void
+    {
+        $date = $this->getQueryParam('date', date('Y-m-d'));
+        
+        if (!$this->validateDate($date)) {
+            $this->jsonError('Invalid date format', 400);
+        }
+        
+        $zones = $this->priceModel->getAvailableZones($date);
+        
+        $this->jsonResponse([
+            'date' => $date,
+            'zones' => $zones
+        ]);
     }
     
     public function getHours(): void
     {
         $date = $this->getQueryParam('date', date('Y-m-d'));
+        $geoId = (int) $this->getQueryParam('geo_id', 8741);
         
         if (!$this->validateDate($date)) {
             $this->jsonError('Invalid date format. Use Y-m-d', 400);
         }
         
-        $prices = $this->priceModel->findByDate($date);
-        $classifications = $this->classificationModel->findByDate($date);
+        $prices = $this->priceModel->findByDate($date, $geoId);
+        $classifications = $this->classificationModel->findByDate($date, $geoId);
         
         if (empty($prices)) {
             $this->jsonError('No data available for this date', 404);
@@ -63,6 +82,8 @@ class ApiController extends BaseController
         
         $this->jsonResponse([
             'date' => $date,
+            'geo_id' => $geoId,
+            'geo_name' => $prices[0]['geo_name'] ?? 'Desconocida',
             'hours' => $hours
         ]);
     }
@@ -70,6 +91,7 @@ class ApiController extends BaseController
     public function getTaskRecommendation(string $taskCode): void
     {
         $date = $this->getQueryParam('date', date('Y-m-d'));
+        $geoId = (int) $this->getQueryParam('geo_id', 8741);
         
         if (!$this->validateDate($date)) {
             $this->jsonError('Invalid date format. Use Y-m-d', 400);
@@ -81,7 +103,7 @@ class ApiController extends BaseController
             $this->jsonError('Task not found', 404);
         }
         
-        $recommendation = $this->recommendationModel->findByDateAndTask($date, $task['id']);
+        $recommendation = $this->recommendationModel->findByDateAndTask($date, $task['id'], $geoId);
         
         if (!$recommendation) {
             $this->jsonError('No recommendation available for this date', 404);
@@ -89,20 +111,21 @@ class ApiController extends BaseController
         
         $this->jsonResponse([
             'date' => $date,
+            'geo_id' => $geoId,
             'task' => $task['task_name'],
             'recommended_hours' => $recommendation['recommended_hours'],
             'message' => $this->formatRecommendationMessage($recommendation['recommended_hours'], $task['task_name'])
         ]);
     }
     
-    private function getSummary(string $date): void
+    private function getSummary(string $date, int $geoId): void
     {
         if (!$this->validateDate($date)) {
             $this->jsonError('Invalid date format', 400);
         }
         
-        $recommendations = $this->recommendationModel->findByDate($date);
-        $stats = $this->priceModel->getStatsByDate($date);
+        $recommendations = $this->recommendationModel->findByDate($date, $geoId);
+        $stats = $this->priceModel->getStatsByDate($date, $geoId);
         
         if (empty($recommendations)) {
             $this->jsonError('No data available for this date', 404);
@@ -110,6 +133,8 @@ class ApiController extends BaseController
         
         $summary = [
             'date' => $date,
+            'geo_id' => $geoId,
+            'geo_name' => $recommendations[0]['geo_name'] ?? 'Desconocida',
             'price_range' => [
                 'min' => round($stats['min_price'], 3),
                 'max' => round($stats['max_price'], 3),
