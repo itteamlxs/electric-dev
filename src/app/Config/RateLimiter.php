@@ -4,43 +4,63 @@ namespace App\Config;
 
 class RateLimiter
 {
-    private const MAX_REQUESTS = 100;
-    private const TIME_WINDOW = 3600; // 1 hora
     private const CACHE_FILE = '/var/www/html/storage/rate_limit.json';
+    
+    private const LIMITS = [
+        'default' => ['requests' => 100, 'window' => 3600],
+        'health' => ['requests' => 1000, 'window' => 3600],
+        'zones' => ['requests' => 200, 'window' => 3600],
+        'today' => ['requests' => 500, 'window' => 3600],
+        'tomorrow' => ['requests' => 500, 'window' => 3600],
+        'hours' => ['requests' => 500, 'window' => 3600],
+        'task' => ['requests' => 300, 'window' => 3600]
+    ];
     
     public static function check(): bool
     {
         $ip = self::getClientIp();
+        $endpoint = self::getEndpoint();
         $now = time();
         
+        $limit = self::LIMITS[$endpoint] ?? self::LIMITS['default'];
+        
         $data = self::loadData();
+        $data = array_filter($data, fn($record) => isset($record['expires']) && $record['expires'] > $now);
         
-        // Limpiar registros antiguos
-        $data = array_filter($data, fn($record) => $record['expires'] > $now);
+        $key = $ip . ':' . $endpoint;
+        $requests = array_filter($data, fn($record) => isset($record['key']) && $record['key'] === $key);
         
-        // Contar requests del IP
-        $ipRequests = array_filter($data, fn($record) => $record['ip'] === $ip);
-        
-        if (count($ipRequests) >= self::MAX_REQUESTS) {
-            http_response_code(429);
-            echo json_encode([
-                'success' => false,
-                'error' => 'Too many requests. Try again later.',
-                'timestamp' => date('c')
-            ]);
-            exit;
+        if (count($requests) >= $limit['requests']) {
+            self::sendTooManyRequests($limit['window']);
+            return false;
         }
         
-        // Registrar request
         $data[] = [
+            'key' => $key,
             'ip' => $ip,
+            'endpoint' => $endpoint,
             'time' => $now,
-            'expires' => $now + self::TIME_WINDOW
+            'expires' => $now + $limit['window']
         ];
         
         self::saveData($data);
         
         return true;
+    }
+    
+    private static function getEndpoint(): string
+    {
+        $uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+        
+        if (preg_match('#^/api/(health|zones|today|tomorrow|hours)#', $uri, $matches)) {
+            return $matches[1];
+        }
+        
+        if (preg_match('#^/api/task/#', $uri)) {
+            return 'task';
+        }
+        
+        return 'default';
     }
     
     private static function getClientIp(): string
@@ -72,16 +92,36 @@ class RateLimiter
         }
         
         $content = file_get_contents(self::CACHE_FILE);
-        return json_decode($content, true) ?: [];
+        $data = json_decode($content, true);
+        
+        if (!is_array($data)) {
+            return [];
+        }
+        
+        return $data;
     }
     
     private static function saveData(array $data): void
     {
         $dir = dirname(self::CACHE_FILE);
         if (!is_dir($dir)) {
-            mkdir($dir, 0755, true);
+            mkdir($dir, 0777, true);
         }
         
         file_put_contents(self::CACHE_FILE, json_encode($data), LOCK_EX);
+    }
+    
+    private static function sendTooManyRequests(int $retryAfter): void
+    {
+        http_response_code(429);
+        header('Content-Type: application/json; charset=utf-8');
+        header("Retry-After: $retryAfter");
+        echo json_encode([
+            'success' => false,
+            'error' => 'Too many requests. Try again later.',
+            'retry_after' => $retryAfter,
+            'timestamp' => date('c')
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
     }
 }

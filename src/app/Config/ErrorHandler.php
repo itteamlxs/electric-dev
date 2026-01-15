@@ -40,7 +40,10 @@ class ErrorHandler
         ]);
         
         $code = $e->getCode() >= 400 && $e->getCode() < 600 ? $e->getCode() : 500;
-        $message = $_ENV['APP_ENV'] === 'production' ? 'Internal server error' : $e->getMessage();
+        
+        $message = $_ENV['APP_ENV'] === 'production' 
+            ? 'Internal server error' 
+            : Security::sanitizeOutput($e->getMessage());
         
         self::sendJsonError($message, $code);
     }
@@ -59,13 +62,14 @@ class ErrorHandler
     {
         if (!headers_sent()) {
             http_response_code($code);
+            header('Content-Type: application/json; charset=utf-8');
         }
         
         echo json_encode([
             'success' => false,
             'error' => $message,
             'timestamp' => date('c')
-        ]);
+        ], JSON_UNESCAPED_UNICODE);
         
         exit;
     }

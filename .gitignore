@@ -6,3 +6,4 @@ src/vendor
 #Ficheros no necesarios x seguridad
 pass.txt
 src/.env
+.env

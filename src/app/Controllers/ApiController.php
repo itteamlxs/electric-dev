@@ -6,6 +6,7 @@ use App\Models\ElectricityPrice;
 use App\Models\HourClassification;
 use App\Models\Recommendation;
 use App\Models\Task;
+use App\Config\Cache;
 
 class ApiController extends BaseController
 {
@@ -13,6 +14,8 @@ class ApiController extends BaseController
     private HourClassification $classificationModel;
     private Recommendation $recommendationModel;
     private Task $taskModel;
+    
+    private const CACHE_TTL = 3600;
     
     public function __construct()
     {
@@ -44,7 +47,11 @@ class ApiController extends BaseController
             $this->jsonError('Invalid date format', 400);
         }
         
-        $zones = $this->priceModel->getAvailableZones($date);
+        $cacheKey = "zones:$date";
+        
+        $zones = Cache::remember($cacheKey, self::CACHE_TTL, function() use ($date) {
+            return $this->priceModel->getAvailableZones($date);
+        });
         
         $this->jsonResponse([
             'date' => $date,
@@ -61,31 +68,41 @@ class ApiController extends BaseController
             $this->jsonError('Invalid date format. Use Y-m-d', 400);
         }
         
-        $prices = $this->priceModel->findByDate($date, $geoId);
-        $classifications = $this->classificationModel->findByDate($date, $geoId);
+        $cacheKey = "hours:$date:$geoId";
         
-        if (empty($prices)) {
+        $data = Cache::remember($cacheKey, self::CACHE_TTL, function() use ($date, $geoId) {
+            $prices = $this->priceModel->findByDate($date, $geoId);
+            $classifications = $this->classificationModel->findByDate($date, $geoId);
+            
+            if (empty($prices)) {
+                return null;
+            }
+            
+            $hours = [];
+            foreach ($prices as $price) {
+                $classification = array_values(array_filter($classifications, fn($c) => $c['hour'] == $price['hour']));
+                
+                $hours[] = [
+                    'hour' => $price['hour'],
+                    'price' => round($price['price_eur_mwh'], 3),
+                    'classification' => $classification[0]['classification'] ?? 'normal',
+                    'label' => $this->getLabel($classification[0]['classification'] ?? 'normal')
+                ];
+            }
+            
+            return [
+                'date' => $date,
+                'geo_id' => $geoId,
+                'geo_name' => $prices[0]['geo_name'] ?? 'Desconocida',
+                'hours' => $hours
+            ];
+        });
+        
+        if ($data === null) {
             $this->jsonError('No data available for this date', 404);
         }
         
-        $hours = [];
-        foreach ($prices as $price) {
-            $classification = array_values(array_filter($classifications, fn($c) => $c['hour'] == $price['hour']));
-            
-            $hours[] = [
-                'hour' => $price['hour'],
-                'price' => round($price['price_eur_mwh'], 3),
-                'classification' => $classification[0]['classification'] ?? 'normal',
-                'label' => $this->getLabel($classification[0]['classification'] ?? 'normal')
-            ];
-        }
-        
-        $this->jsonResponse([
-            'date' => $date,
-            'geo_id' => $geoId,
-            'geo_name' => $prices[0]['geo_name'] ?? 'Desconocida',
-            'hours' => $hours
-        ]);
+        $this->jsonResponse($data);
     }
     
     public function getTaskRecommendation(string $taskCode): void
@@ -103,19 +120,29 @@ class ApiController extends BaseController
             $this->jsonError('Task not found', 404);
         }
         
-        $recommendation = $this->recommendationModel->findByDateAndTask($date, $task['id'], $geoId);
+        $cacheKey = "task:$taskCode:$date:$geoId";
         
-        if (!$recommendation) {
+        $data = Cache::remember($cacheKey, self::CACHE_TTL, function() use ($date, $task, $geoId) {
+            $recommendation = $this->recommendationModel->findByDateAndTask($date, $task['id'], $geoId);
+            
+            if (!$recommendation) {
+                return null;
+            }
+            
+            return [
+                'date' => $date,
+                'geo_id' => $geoId,
+                'task' => $task['task_name'],
+                'recommended_hours' => $recommendation['recommended_hours'],
+                'message' => $this->formatRecommendationMessage($recommendation['recommended_hours'], $task['task_name'])
+            ];
+        });
+        
+        if ($data === null) {
             $this->jsonError('No recommendation available for this date', 404);
         }
         
-        $this->jsonResponse([
-            'date' => $date,
-            'geo_id' => $geoId,
-            'task' => $task['task_name'],
-            'recommended_hours' => $recommendation['recommended_hours'],
-            'message' => $this->formatRecommendationMessage($recommendation['recommended_hours'], $task['task_name'])
-        ]);
+        $this->jsonResponse($data);
     }
     
     private function getSummary(string $date, int $geoId): void
@@ -124,29 +151,37 @@ class ApiController extends BaseController
             $this->jsonError('Invalid date format', 400);
         }
         
-        $recommendations = $this->recommendationModel->findByDate($date, $geoId);
-        $stats = $this->priceModel->getStatsByDate($date, $geoId);
+        $cacheKey = "summary:$date:$geoId";
         
-        if (empty($recommendations)) {
+        $summary = Cache::remember($cacheKey, self::CACHE_TTL, function() use ($date, $geoId) {
+            $recommendations = $this->recommendationModel->findByDate($date, $geoId);
+            $stats = $this->priceModel->getStatsByDate($date, $geoId);
+            
+            if (empty($recommendations)) {
+                return null;
+            }
+            
+            return [
+                'date' => $date,
+                'geo_id' => $geoId,
+                'geo_name' => $recommendations[0]['geo_name'] ?? 'Desconocida',
+                'price_range' => [
+                    'min' => round($stats['min_price'], 3),
+                    'max' => round($stats['max_price'], 3),
+                    'avg' => round($stats['avg_price'], 3)
+                ],
+                'recommendations' => array_map(fn($r) => [
+                    'task' => $r['task_name'],
+                    'task_code' => $r['task_code'],
+                    'recommended_hours' => $r['recommended_hours'],
+                    'message' => $this->formatRecommendationMessage($r['recommended_hours'], $r['task_name'])
+                ], $recommendations)
+            ];
+        });
+        
+        if ($summary === null) {
             $this->jsonError('No data available for this date', 404);
         }
-        
-        $summary = [
-            'date' => $date,
-            'geo_id' => $geoId,
-            'geo_name' => $recommendations[0]['geo_name'] ?? 'Desconocida',
-            'price_range' => [
-                'min' => round($stats['min_price'], 3),
-                'max' => round($stats['max_price'], 3),
-                'avg' => round($stats['avg_price'], 3)
-            ],
-            'recommendations' => array_map(fn($r) => [
-                'task' => $r['task_name'],
-                'task_code' => $r['task_code'],
-                'recommended_hours' => $r['recommended_hours'],
-                'message' => $this->formatRecommendationMessage($r['recommended_hours'], $r['task_name'])
-            ], $recommendations)
-        ];
         
         $this->jsonResponse($summary);
     }
