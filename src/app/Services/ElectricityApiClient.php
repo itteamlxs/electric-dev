@@ -7,6 +7,7 @@ use App\Config\Logger;
 class ElectricityApiClient
 {
     private const API_URL = 'https://api.esios.ree.es/indicators/1001';
+    private const GEO_ID_PENINSULA = 8741;
     private string $apiToken;
     
     public function __construct()
@@ -65,7 +66,18 @@ class ElectricityApiClient
         $prices = [];
         
         foreach ($values as $item) {
+            // Filtrar solo Península
+            if ($item['geo_id'] != self::GEO_ID_PENINSULA) {
+                continue;
+            }
+            
             $datetime = new \DateTime($item['datetime']);
+            
+            // Filtrar solo el día solicitado
+            if ($datetime->format('Y-m-d') !== $date) {
+                continue;
+            }
+            
             $hour = (int) $datetime->format('H');
             $price = (float) $item['value'] / 1000;
             
