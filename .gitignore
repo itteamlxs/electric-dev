@@ -1,4 +1,8 @@
 
 
-#Archivos no necesarios en el repositorio
+#Directorios no necesarios en el repositorio
 src/vendor
+
+#Ficheros no necesarios x seguridad
+pass.txt
+src/.env
